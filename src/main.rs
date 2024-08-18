@@ -17,6 +17,7 @@ enum Cell {
 fn main() -> io::Result<()> {
     let dbops: Vec<(&str, &dyn Fn(f64, Date) -> Date)> = vec![
         ("+days", &|a, b| b.add_days(a.floor().abs() as u16)),
+        ("+weeks", &|a, b| b.add_days(7 * a.floor().abs() as u16)),
         ("+months", &|a, b| b.add_months(a.floor().abs() as u16)),
     ];
     let duops: Vec<(&str, &dyn Fn(Date) -> Cell)> = vec![
