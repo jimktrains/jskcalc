@@ -121,9 +121,9 @@ To push onto the stack, just enter the number. For details see the
 [rust f64 grammar](https://doc.rust-lang.org/std/primitive.f64.html#grammar).
 
 ### binary operations
-- +
-- -
-- *
+- \+
+- \-
+- \*
 - /
 - pow
 - atan2
