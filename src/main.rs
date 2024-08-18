@@ -162,6 +162,12 @@ fn main() -> io::Result<()> {
             }
             if let Ok(f) = f64::from_str(s) {
                 stack.push(Cell::Num(f));
+            } else if s.starts_with("0x") {
+                stack.push(Cell::Word(i64::from_be_bytes(
+                    u64::from_str_radix(s.strip_prefix("0x").unwrap(), 16)
+                        .unwrap()
+                        .to_be_bytes(),
+                )));
             } else if date_pattern.is_match(s) {
                 let mut date_parts = s.split("-");
                 stack.push(Cell::Date(Date::new(
