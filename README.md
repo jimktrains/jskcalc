@@ -83,6 +83,15 @@ D Date { year: 2024, month: Nov, day_of_month: 7 }
 dup 178 +days p drop
 D Date { year: 2025, month: Feb, day_of_month: 15 }
 
+clr
+'ustsp 'ustbsp ps conv ps
+Stack is 2 entries deep
+ 0: Str("ustbsp")
+ 1: Str("ustsp")
+
+Stack is 1 entries deep
+ 0: Num(0.33333333333333337)
+
 q
 ```
 
@@ -114,6 +123,11 @@ pl
 
 pd
 : prints and drops the top of the stack
+
+## strings
+
+conv
+: Experimental support in parsing the GNU Units file and doing conversions
 
 ## floats
 

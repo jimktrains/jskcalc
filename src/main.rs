@@ -1,6 +1,8 @@
 #![feature(integer_sign_cast)]
 mod datetime;
+mod units;
 use crate::datetime::Date;
+use crate::units::{load_units, UnitExpr};
 use regex::Regex;
 use std::f64::consts::{E, FRAC_PI_2, FRAC_PI_4, LN_10, LN_2, PI, SQRT_2, TAU};
 use std::io;
@@ -152,6 +154,7 @@ fn main() -> io::Result<()> {
     let mut stack = vec![];
     let stdin = io::stdin();
     let date_pattern = Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap();
+    let units = load_units();
     loop {
         let mut buffer = String::new();
         stdin.read_line(&mut buffer)?;
@@ -176,152 +179,182 @@ fn main() -> io::Result<()> {
                     (u16::from_str(date_parts.next().unwrap()).unwrap() - 1).into(),
                     u8::from_str(date_parts.next().unwrap()).unwrap(),
                 )));
-            } else {
-                if let Some(op) = bops.iter().position(|e| e.0 == s) {
-                    let op = bops[op].1;
-                    let a = stack.pop();
-                    let b = stack.pop();
-                    if let Some(Cell::Num(a)) = a {
-                        if let Some(Cell::Num(b)) = b {
-                            stack.push(Cell::Num(op(a, b)));
-                        } else {
-                            println!("2nd not a number: {b:?}");
-                        }
+            } else if s.starts_with("'") {
+                stack.push(Cell::Str(s[1..].to_string()));
+            } else if let Some(op) = bops.iter().position(|e| e.0 == s) {
+                let op = bops[op].1;
+                let a = stack.pop();
+                let b = stack.pop();
+                if let Some(Cell::Num(a)) = a {
+                    if let Some(Cell::Num(b)) = b {
+                        stack.push(Cell::Num(op(a, b)));
                     } else {
-                        println!("1st not a number: {a:?}");
+                        println!("2nd not a number: {b:?}");
                     }
-                } else if let Some(op) = uops.iter().position(|e| e.0 == s) {
-                    let op = uops[op].1;
-                    let a = stack.pop();
-                    if let Some(Cell::Num(a)) = a {
-                        stack.push(Cell::Num(op(a)));
-                    } else {
-                        println!("1st not a number: {a:?}");
-                    }
-                } else if let Some(op) = wbops.iter().position(|e| e.0 == s) {
-                    let op = wbops[op].1;
-                    let a = stack.pop();
-                    let b = stack.pop();
-                    if let Some(Cell::Word(a)) = a {
-                        if let Some(Cell::Word(b)) = b {
-                            stack.push(Cell::Word(op(a, b)));
-                        } else {
-                            println!("2nd not a number: {b:?}");
-                        }
-                    } else {
-                        println!("1st not a number: {a:?}");
-                    }
-                } else if let Some(op) = wuops.iter().position(|e| e.0 == s) {
-                    let op = wuops[op].1;
-                    let a = stack.pop();
-                    if let Some(Cell::Word(a)) = a {
-                        stack.push(Cell::Word(op(a)));
-                    } else {
-                        println!("1st not a number: {a:?}");
-                    }
-                } else if let Some(op) = dbops.iter().position(|e| e.0 == s) {
-                    let op = dbops[op].1;
-                    let a = stack.pop();
-                    let b = stack.pop();
-                    if let Some(Cell::Num(a)) = a {
-                        if let Some(Cell::Date(b)) = b {
-                            stack.push(Cell::Date(op(a, b)));
-                        } else {
-                            println!("2nd not a date: {b:?}");
-                        }
-                    } else {
-                        println!("1st not a number: {a:?}");
-                    }
-                } else if let Some(op) = duops.iter().position(|e| e.0 == s) {
-                    let op = duops[op].1;
-                    let a = stack.pop();
-                    if let Some(Cell::Date(a)) = a {
-                        stack.push(op(a));
-                    } else {
-                        println!("1st not a date: {a:?}");
-                    }
-                } else if let Some(op) = consts.iter().position(|e| e.0 == s) {
-                    stack.push(Cell::Num(consts[op].1));
-                } else if let Some(op) = stackop.iter().position(|e| e.0 == s) {
-                    let op = stackop[op];
-                    let mut vals = vec![];
-                    for i in 0..op.1 {
-                        if let Some(v) = stack.pop() {
-                            vals.push(v);
-                        } else {
-                            println!("No element at stack position {i}");
-                            break;
-                        }
-                    }
-                    if vals.len() == op.1 {
-                        stack.append(&mut op.2(vals))
-                    }
-                } else if s == "pl" {
-                    let v = stack.last();
-                    if let Some(v) = v {
-                        match v {
-                            Cell::Num(v) => println!("N {v:?}"),
-                            Cell::Date(v) => println!("D {v:?}"),
-                            Cell::Word(v) => {
-                                print!("W b");
-                                for i in (0..=56).rev().step_by(8) {
-                                    let p1 = (v >> (i + 4)) & 0xf;
-                                    let p2 = (v >> i) & 0xf;
-                                    print!("{p1:04b} {p2:04b}  ");
-                                }
-                                println!();
-                                print!("W x");
-                                for i in (0..=56).rev().step_by(8) {
-                                    let p = (v >> i) & 0xff;
-                                    print!("{p:02X} ");
-                                }
-                                println!();
-                                println!("W {v}i64");
-                                let u = v.cast_unsigned();
-                                println!("W {u}u64");
-                                // let f = f64::from_bits(v.cast_unsigned());
-                                // println!("W {f}f64")
-                            }
-                            Cell::Str(v) => println!("S {v:?}"),
-                        };
-                    }
-                } else if s == "p" || s == "pd" {
-                    let v = if s == "pd" {
-                        stack.pop()
-                    } else {
-                        // Barf
-                        stack.last().map(|x| x.clone())
-                    };
-                    if let Some(v) = v {
-                        match v {
-                            Cell::Num(v) => println!("N {v:?}"),
-                            Cell::Date(v) => println!("D {v:?}"),
-                            Cell::Word(v) => {
-                                print!("W b");
-                                for i in (0..=56).rev().step_by(8) {
-                                    let p1 = (v >> (i + 4)) & 0xf;
-                                    let p2 = (v >> i) & 0xf;
-                                    print!("{p1:04b} {p2:04b}  ");
-                                }
-                                println!();
-                            }
-                            Cell::Str(v) => println!("S {v:?}"),
-                        };
-                    }
-                } else if s == "clr" {
-                    while stack.pop().is_some() {}
-                } else if s == "ps" {
-                    let l = stack.len();
-                    println!("Stack is {l} entries deep");
-                    for (i, e) in stack.iter().rev().enumerate() {
-                        println!(" {i}: {e:?}");
-                    }
-                    println!();
-                } else if s == "q" {
-                    return Ok(());
                 } else {
-                    stack.push(Cell::Str(s.to_owned()));
+                    println!("1st not a number: {a:?}");
                 }
+            } else if let Some(op) = uops.iter().position(|e| e.0 == s) {
+                let op = uops[op].1;
+                let a = stack.pop();
+                if let Some(Cell::Num(a)) = a {
+                    stack.push(Cell::Num(op(a)));
+                } else {
+                    println!("1st not a number: {a:?}");
+                }
+            } else if let Some(op) = wbops.iter().position(|e| e.0 == s) {
+                let op = wbops[op].1;
+                let a = stack.pop();
+                let b = stack.pop();
+                if let Some(Cell::Word(a)) = a {
+                    if let Some(Cell::Word(b)) = b {
+                        stack.push(Cell::Word(op(a, b)));
+                    } else {
+                        println!("2nd not a number: {b:?}");
+                    }
+                } else {
+                    println!("1st not a number: {a:?}");
+                }
+            } else if let Some(op) = wuops.iter().position(|e| e.0 == s) {
+                let op = wuops[op].1;
+                let a = stack.pop();
+                if let Some(Cell::Word(a)) = a {
+                    stack.push(Cell::Word(op(a)));
+                } else {
+                    println!("1st not a number: {a:?}");
+                }
+            } else if let Some(op) = dbops.iter().position(|e| e.0 == s) {
+                let op = dbops[op].1;
+                let a = stack.pop();
+                let b = stack.pop();
+                if let Some(Cell::Num(a)) = a {
+                    if let Some(Cell::Date(b)) = b {
+                        stack.push(Cell::Date(op(a, b)));
+                    } else {
+                        println!("2nd not a date: {b:?}");
+                    }
+                } else {
+                    println!("1st not a number: {a:?}");
+                }
+            } else if let Some(op) = duops.iter().position(|e| e.0 == s) {
+                let op = duops[op].1;
+                let a = stack.pop();
+                if let Some(Cell::Date(a)) = a {
+                    stack.push(op(a));
+                } else {
+                    println!("1st not a date: {a:?}");
+                }
+            } else if let Some(op) = consts.iter().position(|e| e.0 == s) {
+                stack.push(Cell::Num(consts[op].1));
+            } else if let Some(op) = stackop.iter().position(|e| e.0 == s) {
+                let op = stackop[op];
+                let mut vals = vec![];
+                for i in 0..op.1 {
+                    if let Some(v) = stack.pop() {
+                        vals.push(v);
+                    } else {
+                        println!("No element at stack position {i}");
+                        break;
+                    }
+                }
+                if vals.len() == op.1 {
+                    stack.append(&mut op.2(vals))
+                }
+            } else if s == "conv" {
+                let a = stack.pop();
+                let b = stack.pop();
+                if let Some(Cell::Str(a)) = a {
+                    if let Some(Cell::Str(b)) = b {
+                        if let Some(ua) = units.get(&a) {
+                            if let Some(ub) = units.get(&b) {
+                                let u = ub.clone() / ua.clone();
+
+                                if let UnitExpr::Coef(c, u) = u {
+                                    stack.push(Cell::Num(c.as_f64()));
+                                    let u = format!("{}", u);
+                                    if u.len() > 0 {
+                                        stack.push(Cell::Str(u));
+                                    }
+                                } else {
+                                    stack.push(Cell::Str(format!("{}", u)));
+                                }
+                            } else {
+                                println!("no unit found for {b}");
+                            }
+                        } else {
+                            println!("no unit found for {a}");
+                        }
+                    } else {
+                        println!("2nd not a String: {b:?}");
+                    }
+                } else {
+                    println!("1st not a String: {a:?}");
+                }
+            } else if s == "pl" {
+                let v = stack.last();
+                if let Some(v) = v {
+                    match v {
+                        Cell::Num(v) => println!("N {v:?}"),
+                        Cell::Date(v) => println!("D {v:?}"),
+                        Cell::Word(v) => {
+                            print!("W b");
+                            for i in (0..=56).rev().step_by(8) {
+                                let p1 = (v >> (i + 4)) & 0xf;
+                                let p2 = (v >> i) & 0xf;
+                                print!("{p1:04b} {p2:04b}  ");
+                            }
+                            println!();
+                            print!("W x");
+                            for i in (0..=56).rev().step_by(8) {
+                                let p = (v >> i) & 0xff;
+                                print!("{p:02X} ");
+                            }
+                            println!();
+                            println!("W {v}i64");
+                            let u = v.cast_unsigned();
+                            println!("W {u}u64");
+                            // let f = f64::from_bits(v.cast_unsigned());
+                            // println!("W {f}f64")
+                        }
+                        Cell::Str(v) => println!("S {v:?}"),
+                    };
+                }
+            } else if s == "p" || s == "pd" {
+                let v = if s == "pd" {
+                    stack.pop()
+                } else {
+                    // Barf
+                    stack.last().map(|x| x.clone())
+                };
+                if let Some(v) = v {
+                    match v {
+                        Cell::Num(v) => println!("N {v:?}"),
+                        Cell::Date(v) => println!("D {v:?}"),
+                        Cell::Word(v) => {
+                            print!("W b");
+                            for i in (0..=56).rev().step_by(8) {
+                                let p1 = (v >> (i + 4)) & 0xf;
+                                let p2 = (v >> i) & 0xf;
+                                print!("{p1:04b} {p2:04b}  ");
+                            }
+                            println!();
+                        }
+                        Cell::Str(v) => println!("S {v:?}"),
+                    };
+                }
+            } else if s == "clr" {
+                while stack.pop().is_some() {}
+            } else if s == "ps" {
+                let l = stack.len();
+                println!("Stack is {l} entries deep");
+                for (i, e) in stack.iter().rev().enumerate() {
+                    println!(" {i}: {e:?}");
+                }
+                println!();
+            } else if s == "q" {
+                return Ok(());
+            } else {
+                stack.push(Cell::Str(s.to_owned()));
             }
         }
     }
