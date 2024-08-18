@@ -353,24 +353,24 @@ mod date_test {
         assert_eq!(Date::new(1996, Month::Jan, 1).is_leap_year(), true);
         assert_eq!(Date::new(1997, Month::Jan, 1).is_leap_year(), false);
         assert_eq!(Date::new(2000, Month::Jan, 1).is_leap_year(), true);
-        #[test]
-        pub fn dow() {
-            assert_eq!(Date::new(2024, Month::Aug, 21).dow(), DayOfWeek::Wednesday);
-        }
-        #[test]
-        pub fn doy() {
-            assert_eq!(Date::new(2024, Month::Aug, 21).doy(), 234);
-        }
-        #[test]
-        pub fn add_days() {
-            assert_eq!(
-                Date::new(2024, Month::Aug, 21).add_days(78),
-                Date::new(2024, Month::Nov, 7)
-            );
-            assert_eq!(
-                Date::new(2024, Month::Aug, 21).add_days(178),
-                Date::new(2025, Month::Feb, 15)
-            );
-        }
+    }
+    #[test]
+    pub fn dow() {
+        assert_eq!(Date::new(2024, Month::Aug, 21).dow(), DayOfWeek::Wednesday);
+    }
+    #[test]
+    pub fn doy() {
+        assert_eq!(Date::new(2024, Month::Aug, 21).doy(), 234);
+    }
+    #[test]
+    pub fn add_days() {
+        assert_eq!(
+            Date::new(2024, Month::Aug, 21).add_days(78),
+            Date::new(2024, Month::Nov, 7)
+        );
+        assert_eq!(
+            Date::new(2024, Month::Aug, 21).add_days(178),
+            Date::new(2025, Month::Feb, 15)
+        );
     }
 }

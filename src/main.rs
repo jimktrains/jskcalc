@@ -6,6 +6,7 @@ use crate::units::{load_units, UnitExpr};
 use regex::Regex;
 use std::f64::consts::{E, FRAC_PI_2, FRAC_PI_4, LN_10, LN_2, PI, SQRT_2, TAU};
 use std::io;
+use std::ops::{BitAnd, BitOr, BitXor};
 use std::str::FromStr;
 
 #[derive(Debug, Clone)]
@@ -14,83 +15,238 @@ enum Cell {
     Str(String),
     Word(i64),
     Date(Date),
+    Days(i64),
+}
+
+impl Cell {
+    fn type_name(&self) -> String {
+        match self {
+            Cell::Num(_) => "Num".to_owned(),
+            Cell::Str(_) => "Str".to_owned(),
+            Cell::Word(_) => "Word".to_owned(),
+            Cell::Date(_) => "Date".to_owned(),
+            Cell::Days(_) => "Days".to_owned(),
+        }
+    }
+
+    fn as_num(&self) -> f64 {
+        match self {
+            Cell::Num(f) => *f,
+            Cell::Str(_) => panic!("Str is not a number!"),
+            Cell::Word(_) => panic!("Word is not a number!"),
+            Cell::Date(_) => panic!("Date is not a number!"),
+            Cell::Days(_) => panic!("Days is not a number!"),
+        }
+    }
+
+    fn as_word(&self) -> i64 {
+        match self {
+            Cell::Num(_) => panic!("Num is not a word!"),
+            Cell::Str(_) => panic!("Str is not a word!"),
+            Cell::Word(w) => *w,
+            Cell::Date(_) => panic!("Date is not a word!"),
+            Cell::Days(_) => panic!("Days is not a word!"),
+        }
+    }
+
+    fn as_date(&self) -> Date {
+        match self {
+            Cell::Num(_) => panic!("Num is not a date!"),
+            Cell::Str(_) => panic!("Str is not a date!"),
+            Cell::Word(_) => panic!("Word is not date!"),
+            Cell::Date(d) => d.clone(),
+            Cell::Days(_) => panic!("Days is not a date!"),
+        }
+    }
+
+    fn as_days(&self) -> i64 {
+        match self {
+            Cell::Num(_) => panic!("Num is not a days!"),
+            Cell::Str(_) => panic!("Str is not a days!"),
+            Cell::Word(_) => panic!("Word is not a days!"),
+            Cell::Date(_) => panic!("Date is not a days!"),
+            Cell::Days(d) => *d,
+        }
+    }
+}
+
+type OpFcn<'a> = &'a dyn Fn(Vec<Cell>) -> Vec<Cell>;
+type OpType<'a> = (&'a str, Vec<&'a str>, OpFcn<'a>);
+type OpsType<'a> = Vec<(&'a str, Vec<&'a str>, &'a dyn Fn(Vec<Cell>) -> Vec<Cell>)>;
+type StackType = Vec<Cell>;
+
+fn find_op<'a>(
+    opname: &'a str,
+    ops: &'a OpsType,
+    stack: &'a mut StackType,
+) -> Option<(&'a OpType<'a>, &'a mut StackType)> {
+    for op in ops {
+        if opname != op.0 {
+            continue;
+        }
+        if stack.len() < op.1.len() {
+            continue;
+        }
+        for (i, t) in op.1.iter().enumerate() {
+            if *t == "*" {
+                continue;
+            }
+            if t.to_owned() != stack[stack.len() - i - 1].type_name() {
+                continue;
+            }
+        }
+        return Some((op, stack));
+    }
+    None
 }
 
 fn main() -> io::Result<()> {
-    let dbops: Vec<(&str, &dyn Fn(f64, Date) -> Date)> = vec![
-        ("+days", &|a, b| b.add_days(a.floor().abs() as u16)),
-        ("+weeks", &|a, b| b.add_days(7 * a.floor().abs() as u16)),
-        ("+months", &|a, b| b.add_months(a.floor().abs() as u16)),
-    ];
-    let duops: Vec<(&str, &dyn Fn(Date) -> Cell)> = vec![
-        ("dow", &|a| Cell::Str(format!("{:?}", a.dow()))),
-        ("doy", &|a| Cell::Num(a.doy() as f64)),
-    ];
-    let bops: Vec<(&str, &dyn Fn(f64, f64) -> f64)> = vec![
-        ("+", &|a, b| b + a),
-        ("-", &|a, b| b - a),
-        ("*", &|a, b| b * a),
-        ("/", &|a, b| b / a),
-        ("pow", &|a, b| a.powf(b)),
-        ("atan2", &f64::atan2),
-        ("hypot", &f64::hypot),
-    ];
-    let uops: Vec<(&str, &dyn Fn(f64) -> f64)> = vec![
-        ("sin", &f64::sin),
-        ("cos", &f64::cos),
-        ("tan", &f64::tan),
-        ("asin", &f64::asin),
-        ("acos", &f64::acos),
-        ("atan", &f64::atan),
-        ("sinh", &f64::sinh),
-        ("cosh", &f64::cosh),
-        ("tanh", &f64::tanh),
-        ("asinh", &f64::asinh),
-        ("acosh", &f64::acosh),
-        ("atanh", &f64::atanh),
+    let ops: Vec<(&str, Vec<&str>, &dyn Fn(Vec<Cell>) -> Vec<Cell>)> = vec![
+        ("days", vec!["Num"], &|v| {
+            vec![Cell::Days(v[0].as_num().floor() as i64)]
+        }),
+        ("weeks", vec!["Num"], &|v| {
+            vec![Cell::Days(7 * v[0].as_num().floor() as i64)]
+        }),
+        ("+", vec!["Days", "Date"], &|v| {
+            vec![Cell::Date(v[1].as_date().add_days(v[0].as_days() as u16))]
+        }),
+        ("dow", vec!["Date"], &|a| {
+            vec![Cell::Str(format!("{:?}", a[0].as_date().dow()))]
+        }),
+        ("doy", vec!["Date"], &|a| {
+            vec![Cell::Num(a[0].as_date().doy() as f64)]
+        }),
+        ("+", vec!["Num", "Num"], &|v| {
+            vec![Cell::Num(v[1].as_num() + v[0].as_num())]
+        }),
+        ("-", vec!["Num", "Num"], &|v| {
+            vec![Cell::Num(v[1].as_num() - v[0].as_num())]
+        }),
+        ("*", vec!["Num", "Num"], &|v| {
+            vec![Cell::Num(v[1].as_num() * v[0].as_num())]
+        }),
+        ("/", vec!["Num", "Num"], &|v| {
+            vec![Cell::Num(v[1].as_num() / v[0].as_num())]
+        }),
+        ("pow", vec!["Num", "Num"], &|v| {
+            vec![Cell::Num(f64::powf(v[0].as_num(), v[1].as_num()))]
+        }),
+        ("atan2", vec!["Num", "Num"], &|v| {
+            vec![Cell::Num(f64::atan2(v[0].as_num(), v[1].as_num()))]
+        }),
+        ("hypot", vec!["Num", "Num"], &|v| {
+            vec![Cell::Num(f64::hypot(v[0].as_num(), v[1].as_num()))]
+        }),
+        ("sin", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::sin(v[0].as_num()))]
+        }),
+        ("cos", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::cos(v[0].as_num()))]
+        }),
+        ("tan", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::tan(v[0].as_num()))]
+        }),
+        ("asin", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::asin(v[0].as_num()))]
+        }),
+        ("acos", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::acos(v[0].as_num()))]
+        }),
+        ("atan", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::atan(v[0].as_num()))]
+        }),
+        ("sinh", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::sinh(v[0].as_num()))]
+        }),
+        ("cosh", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::cosh(v[0].as_num()))]
+        }),
+        ("tanh", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::tanh(v[0].as_num()))]
+        }),
+        ("asinh", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::asinh(v[0].as_num()))]
+        }),
+        ("acosh", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::acosh(v[0].as_num()))]
+        }),
+        ("atanh", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::atanh(v[0].as_num()))]
+        }),
         ////
-        ("d2r", &f64::to_radians),
-        ("r2d", &f64::to_degrees),
+        ("d2r", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::to_radians(v[0].as_num()))]
+        }),
+        ("r2d", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::to_degrees(v[0].as_num()))]
+        }),
         ////
-        ("1/", &f64::recip),
-        ("recip", &f64::recip),
+        ("1/", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::recip(v[0].as_num()))]
+        }),
+        ("recip", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::recip(v[0].as_num()))]
+        }),
         ////
-        ("ln", &f64::ln),
-        ("ln1+", &f64::ln_1p),
-        ("log10", &f64::log10),
-        ("log2", &f64::log2),
-        ("exp", &f64::exp),
-        ("exp-1", &f64::exp_m1),
-        ("sqrt", &f64::sqrt),
-        ("cbrt", &f64::cbrt),
-        ("sq", &|a| a * a),
-        ("cb", &|a| a * a * a),
+        ("ln", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::ln(v[0].as_num()))]
+        }),
+        ("ln1+", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::ln_1p(v[0].as_num()))]
+        }),
+        ("log10", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::log10(v[0].as_num()))]
+        }),
+        ("log2", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::log2(v[0].as_num()))]
+        }),
+        ("exp", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::exp(v[0].as_num()))]
+        }),
+        ("exp-1", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::exp_m1(v[0].as_num()))]
+        }),
+        ("sqrt", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::sqrt(v[0].as_num()))]
+        }),
+        ("cbrt", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::cbrt(v[0].as_num()))]
+        }),
+        ("sq", vec!["Num"], &|a| {
+            vec![Cell::Num(a[0].as_num() * a[0].as_num())]
+        }),
+        ("cb", vec!["Num"], &|a| {
+            vec![Cell::Num(a[0].as_num() * a[0].as_num() * a[0].as_num())]
+        }),
         ////
-        ("abs", &f64::abs),
-        ("ceil", &f64::ceil),
-        ("floor", &f64::floor),
-    ];
-    let consts: Vec<(&str, f64)> = vec![
-        ("pi", PI),
-        ("e", E),
-        ("sqrt2", SQRT_2),
-        ("ln2", LN_2),
-        ("ln10", LN_10),
-        ("tau", TAU),
-        ("pi/2", FRAC_PI_2),
-        ("pi/4", FRAC_PI_4),
-    ];
-
-    // Not a fan of the cloning.
-    let stackop: Vec<(&str, usize, &dyn Fn(Vec<Cell>) -> Vec<Cell>)> = vec![
-        ("drop", 1, &|_v| vec![]),
-        ("swap", 2, &|v| vec![v[0].clone(), v[1].clone()]),
-        ("rot", 3, &|v| {
+        ("abs", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::abs(v[0].as_num()))]
+        }),
+        ("ceil", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::ceil(v[0].as_num()))]
+        }),
+        ("floor", vec!["Num"], &|v| {
+            vec![Cell::Num(f64::floor(v[0].as_num()))]
+        }),
+        ("pi", vec![], &|_| vec![Cell::Num(PI)]),
+        ("e", vec![], &|_| vec![Cell::Num(E)]),
+        ("sqrt2", vec![], &|_| vec![Cell::Num(SQRT_2)]),
+        ("ln2", vec![], &|_| vec![Cell::Num(LN_2)]),
+        ("ln10", vec![], &|_| vec![Cell::Num(LN_10)]),
+        ("tau", vec![], &|_| vec![Cell::Num(TAU)]),
+        ("pi/2", vec![], &|_| vec![Cell::Num(FRAC_PI_2)]),
+        ("pi/4", vec![], &|_| vec![Cell::Num(FRAC_PI_4)]),
+        ("drop", vec!["*"], &|_v| vec![]),
+        ("swap", vec!["*", "*"], &|v| {
+            vec![v[0].clone(), v[1].clone()]
+        }),
+        ("rot", vec!["*", "*", "*"], &|v| {
             vec![v[0].clone(), v[2].clone(), v[1].clone()]
         }),
-        ("dup", 1, &|v| vec![v[0].clone(), v[0].clone()]),
+        ("dup", vec!["*"], &|v| vec![v[0].clone(), v[0].clone()]),
         ////
-        ("w", 1, &|v| {
+        ("w", vec!["Num"], &|v| {
             if let Cell::Num(n) = v[0] {
                 vec![Cell::Word(n as i64)]
             } else {
@@ -100,7 +256,7 @@ fn main() -> io::Result<()> {
             }
         }),
         ////
-        ("dms2dd", 3, &|v| {
+        ("dms2dd", vec!["Num", "Num", "Num"], &|v| {
             if let Cell::Num(d) = v[2] {
                 if let Cell::Num(m) = v[1] {
                     if let Cell::Num(s) = v[0] {
@@ -121,7 +277,7 @@ fn main() -> io::Result<()> {
                 vec![]
             }
         }),
-        ("dd2dms", 1, &|v| {
+        ("dd2dms", vec!["Num"], &|v| {
             if let Cell::Num(mut v) = v[0] {
                 let d = v.floor();
                 v = (v - d) * 60.0;
@@ -135,22 +291,51 @@ fn main() -> io::Result<()> {
                 vec![]
             }
         }),
+        ("+", vec!["Num", "Num"], &|v| {
+            vec![Cell::Word(i64::wrapping_add(
+                v[1].as_word(),
+                v[0].as_word(),
+            ))]
+        }),
+        ("-", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(v[1].as_word().wrapping_sub(v[0].as_word()))]
+        }),
+        ("*", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(i64::wrapping_mul(
+                v[1].as_word(),
+                v[0].as_word(),
+            ))]
+        }),
+        ("/", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(v[1].as_word() / v[0].as_word())]
+        }),
+        ("mod", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(v[1].as_word() % v[0].as_word())]
+        }),
+        ("&", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(i64::bitand(v[1].as_word(), v[0].as_word()))]
+        }),
+        ("^", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(i64::bitxor(v[1].as_word(), v[0].as_word()))]
+        }),
+        ("|", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(i64::bitor(v[1].as_word(), v[0].as_word()))]
+        }),
+        ("sl", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(v[1].as_word() << v[0].as_word())]
+        }),
+        ("asr", vec!["Word", "Word"], &|v| {
+            vec![Cell::Word(v[1].as_word() >> v[0].as_word())]
+        }),
+        ("lsr", vec!["Num", "Num"], &|v| {
+            vec![Cell::Word(i64::from_be_bytes(
+                ((u64::from_be_bytes(v[1].as_word().to_be_bytes())) >> v[0].as_word())
+                    .to_be_bytes(),
+            ))]
+        }),
+        ("~", vec!["Word"], &|v| vec![Cell::Word(!v[0].as_word())]),
     ];
 
-    let wbops: Vec<(&str, &dyn Fn(i64, i64) -> i64)> = vec![
-        ("w+", &|a, b| b.wrapping_add(a)),
-        ("w-", &|a, b| b.wrapping_sub(a)),
-        ("w*", &|a, b| b * a),
-        ("w/", &|a, b| b / a),
-        ("mod", &|a, b| b % a),
-        ("&", &|a, b| b & a),
-        ("^", &|a, b| b ^ a),
-        ("|", &|a, b| b | a),
-        ("sl", &|a, b| b << a),
-        ("lsr", &|a, b| ((b as u64) >> a) as i64),
-        ("asr", &|a, b| b >> a),
-    ];
-    let wuops: Vec<(&str, &dyn Fn(i64) -> i64)> = vec![("~", &|a| !a)];
     let mut stack = vec![];
     let stdin = io::stdin();
     let date_pattern = Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap();
@@ -181,85 +366,13 @@ fn main() -> io::Result<()> {
                 )));
             } else if s.starts_with("'") {
                 stack.push(Cell::Str(s[1..].to_string()));
-            } else if let Some(op) = bops.iter().position(|e| e.0 == s) {
-                let op = bops[op].1;
-                let a = stack.pop();
-                let b = stack.pop();
-                if let Some(Cell::Num(a)) = a {
-                    if let Some(Cell::Num(b)) = b {
-                        stack.push(Cell::Num(op(a, b)));
-                    } else {
-                        println!("2nd not a number: {b:?}");
-                    }
-                } else {
-                    println!("1st not a number: {a:?}");
+            } else if let Some((op, stack)) = find_op(s, &ops, &mut stack) {
+                let mut params = vec![];
+                let plen = op.1.len();
+                for _ in 1..=plen {
+                    params.push(stack.pop().unwrap());
                 }
-            } else if let Some(op) = uops.iter().position(|e| e.0 == s) {
-                let op = uops[op].1;
-                let a = stack.pop();
-                if let Some(Cell::Num(a)) = a {
-                    stack.push(Cell::Num(op(a)));
-                } else {
-                    println!("1st not a number: {a:?}");
-                }
-            } else if let Some(op) = wbops.iter().position(|e| e.0 == s) {
-                let op = wbops[op].1;
-                let a = stack.pop();
-                let b = stack.pop();
-                if let Some(Cell::Word(a)) = a {
-                    if let Some(Cell::Word(b)) = b {
-                        stack.push(Cell::Word(op(a, b)));
-                    } else {
-                        println!("2nd not a number: {b:?}");
-                    }
-                } else {
-                    println!("1st not a number: {a:?}");
-                }
-            } else if let Some(op) = wuops.iter().position(|e| e.0 == s) {
-                let op = wuops[op].1;
-                let a = stack.pop();
-                if let Some(Cell::Word(a)) = a {
-                    stack.push(Cell::Word(op(a)));
-                } else {
-                    println!("1st not a number: {a:?}");
-                }
-            } else if let Some(op) = dbops.iter().position(|e| e.0 == s) {
-                let op = dbops[op].1;
-                let a = stack.pop();
-                let b = stack.pop();
-                if let Some(Cell::Num(a)) = a {
-                    if let Some(Cell::Date(b)) = b {
-                        stack.push(Cell::Date(op(a, b)));
-                    } else {
-                        println!("2nd not a date: {b:?}");
-                    }
-                } else {
-                    println!("1st not a number: {a:?}");
-                }
-            } else if let Some(op) = duops.iter().position(|e| e.0 == s) {
-                let op = duops[op].1;
-                let a = stack.pop();
-                if let Some(Cell::Date(a)) = a {
-                    stack.push(op(a));
-                } else {
-                    println!("1st not a date: {a:?}");
-                }
-            } else if let Some(op) = consts.iter().position(|e| e.0 == s) {
-                stack.push(Cell::Num(consts[op].1));
-            } else if let Some(op) = stackop.iter().position(|e| e.0 == s) {
-                let op = stackop[op];
-                let mut vals = vec![];
-                for i in 0..op.1 {
-                    if let Some(v) = stack.pop() {
-                        vals.push(v);
-                    } else {
-                        println!("No element at stack position {i}");
-                        break;
-                    }
-                }
-                if vals.len() == op.1 {
-                    stack.append(&mut op.2(vals))
-                }
+                stack.append(&mut op.2(params));
             } else if s == "conv" {
                 let a = stack.pop();
                 let b = stack.pop();
@@ -296,6 +409,7 @@ fn main() -> io::Result<()> {
                     match v {
                         Cell::Num(v) => println!("N {v:?}"),
                         Cell::Date(v) => println!("D {v:?}"),
+                        Cell::Days(v) => println!("Ds {v:?}"),
                         Cell::Word(v) => {
                             print!("W b");
                             for i in (0..=56).rev().step_by(8) {
@@ -330,6 +444,7 @@ fn main() -> io::Result<()> {
                     match v {
                         Cell::Num(v) => println!("N {v:?}"),
                         Cell::Date(v) => println!("D {v:?}"),
+                        Cell::Days(v) => println!("Ds {v:?}"),
                         Cell::Word(v) => {
                             print!("W b");
                             for i in (0..=56).rev().step_by(8) {

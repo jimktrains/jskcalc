@@ -193,10 +193,10 @@ To push onto the stack, just enter the number. For details see the
 To push a word, either push a hex string starting with 0x or push an float then issue `w`. The integer portion of the float is considered as the word.
 
 ### binary operations
-- w+
-- w-
-- w\*
-- w/
+- +
+- -
+- \*
+- /
 - mod
 - &
 - ^
@@ -214,10 +214,8 @@ To push a date, enter a string matching the regular expression `\d{4}-\d{2}-\d{2
 
 ### binary operations
 
-- +months
-- +days
-
 ### unary operations
 
 - dow
 - doy
+- days

@@ -452,8 +452,8 @@ mod units_test {
         println!("{tsp:?}");
         println!("{tbsp:?}");
         let conv = tbsp.clone() / tsp.clone();
-        println!("{conv:?}");
+        println!("tbsp / tsp = {conv:?}");
         let conv = tsp / tbsp;
-        println!("{conv:?}");
+        println!("tsp / tbsp = {conv:?}");
     }
 }
