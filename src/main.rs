@@ -1,4 +1,7 @@
 #![feature(integer_sign_cast)]
+mod datetime;
+use crate::datetime::Date;
+use regex::Regex;
 use std::f64::consts::{E, FRAC_PI_2, FRAC_PI_4, LN_10, LN_2, PI, SQRT_2, TAU};
 use std::io;
 use std::str::FromStr;
@@ -8,9 +11,18 @@ enum Cell {
     Num(f64),
     Str(String),
     Word(i64),
+    Date(Date),
 }
 
 fn main() -> io::Result<()> {
+    let dbops: Vec<(&str, &dyn Fn(f64, Date) -> Date)> = vec![
+        ("+days", &|a, b| b.add_days(a.floor().abs() as u16)),
+        ("+months", &|a, b| b.add_months(a.floor().abs() as u16)),
+    ];
+    let duops: Vec<(&str, &dyn Fn(Date) -> Cell)> = vec![
+        ("dow", &|a| Cell::Str(format!("{:?}", a.dow()))),
+        ("doy", &|a| Cell::Num(a.doy() as f64)),
+    ];
     let bops: Vec<(&str, &dyn Fn(f64, f64) -> f64)> = vec![
         ("+", &|a, b| b + a),
         ("-", &|a, b| b - a),
@@ -38,6 +50,7 @@ fn main() -> io::Result<()> {
         ("r2d", &f64::to_degrees),
         ////
         ("1/", &f64::recip),
+        ("recip", &f64::recip),
         ////
         ("ln", &f64::ln),
         ("ln1+", &f64::ln_1p),
@@ -137,6 +150,7 @@ fn main() -> io::Result<()> {
     let wuops: Vec<(&str, &dyn Fn(i64) -> i64)> = vec![("~", &|a| !a)];
     let mut stack = vec![];
     let stdin = io::stdin();
+    let date_pattern = Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap();
     loop {
         let mut buffer = String::new();
         stdin.read_line(&mut buffer)?;
@@ -148,6 +162,13 @@ fn main() -> io::Result<()> {
             }
             if let Ok(f) = f64::from_str(s) {
                 stack.push(Cell::Num(f));
+            } else if date_pattern.is_match(s) {
+                let mut date_parts = s.split("-");
+                stack.push(Cell::Date(Date::new(
+                    i16::from_str(date_parts.next().unwrap()).unwrap(),
+                    (u16::from_str(date_parts.next().unwrap()).unwrap() - 1).into(),
+                    u8::from_str(date_parts.next().unwrap()).unwrap(),
+                )));
             } else {
                 if let Some(op) = bops.iter().position(|e| e.0 == s) {
                     let op = bops[op].1;
@@ -191,6 +212,27 @@ fn main() -> io::Result<()> {
                     } else {
                         println!("1st not a number: {a:?}");
                     }
+                } else if let Some(op) = dbops.iter().position(|e| e.0 == s) {
+                    let op = dbops[op].1;
+                    let a = stack.pop();
+                    let b = stack.pop();
+                    if let Some(Cell::Num(a)) = a {
+                        if let Some(Cell::Date(b)) = b {
+                            stack.push(Cell::Date(op(a, b)));
+                        } else {
+                            println!("2nd not a date: {b:?}");
+                        }
+                    } else {
+                        println!("1st not a number: {a:?}");
+                    }
+                } else if let Some(op) = duops.iter().position(|e| e.0 == s) {
+                    let op = duops[op].1;
+                    let a = stack.pop();
+                    if let Some(Cell::Date(a)) = a {
+                        stack.push(op(a));
+                    } else {
+                        println!("1st not a date: {a:?}");
+                    }
                 } else if let Some(op) = consts.iter().position(|e| e.0 == s) {
                     stack.push(Cell::Num(consts[op].1));
                 } else if let Some(op) = stackop.iter().position(|e| e.0 == s) {
@@ -212,6 +254,7 @@ fn main() -> io::Result<()> {
                     if let Some(v) = v {
                         match v {
                             Cell::Num(v) => println!("N {v:?}"),
+                            Cell::Date(v) => println!("D {v:?}"),
                             Cell::Word(v) => {
                                 print!("W b");
                                 for i in (0..=56).rev().step_by(8) {
@@ -235,11 +278,17 @@ fn main() -> io::Result<()> {
                             Cell::Str(v) => println!("S {v:?}"),
                         };
                     }
-                } else if s == "p" {
-                    let v = stack.last();
+                } else if s == "p" || s == "pd" {
+                    let v = if s == "pd" {
+                        stack.pop()
+                    } else {
+                        // Barf
+                        stack.last().map(|x| x.clone())
+                    };
                     if let Some(v) = v {
                         match v {
                             Cell::Num(v) => println!("N {v:?}"),
+                            Cell::Date(v) => println!("D {v:?}"),
                             Cell::Word(v) => {
                                 print!("W b");
                                 for i in (0..=56).rev().step_by(8) {

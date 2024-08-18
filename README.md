@@ -2,7 +2,9 @@
 
 A RPN calculator.
 
-Each cell can be a float (f64) or "word" (i64, but treated like bits).
+This is just a first pass. It needs to be cleaned up.
+
+Each cell can be a float (f64), "word" (i64, but treated like bits), date, or string.
 
 To quit, `q` or ^C.
 
@@ -70,6 +72,17 @@ W b0000 0000  0000 0000  0000 0000  0000 0000  0000 0000  0000 1001  1111 1011  
 W b0000 0000  0000 0000  0000 0000  0000 0000  0000 0000  1001 0110  1011 0100  0011 1111  
 W b0000 0000  0000 0000  0000 0000  0000 0000  0000 0000  0000 0000  1011 0000  0011 0001
 
+2024-08-21 p
+D Date { year: 2024, month: Aug, day_of_month: 21 }
+dup dow p drop
+S "Wednesday"
+dup doy p drop
+N 234.0
+dup 78 +days p drop
+D Date { year: 2024, month: Nov, day_of_month: 7 }
+dup 178 +days p drop
+D Date { year: 2025, month: Feb, day_of_month: 15 }
+
 q
 ```
 
@@ -98,6 +111,9 @@ p
 
 pl
 : prints a more detailed version of the top of the stack
+
+pd
+: prints and drops the top of the stack
 
 ## floats
 
@@ -129,6 +145,7 @@ To push onto the stack, just enter the number. For details see the
 - d2r
 - r2d
 - 1/
+- recip
 - ln
 - ln1+
 - log10
@@ -177,3 +194,16 @@ To push a word, push an float then issue `w`. The integer portion of the float i
 ### unary operations
 - ~
 
+## date
+
+To push a date, enter a string matching the regular expression `\d{4}-\d{2}-\d{2}`
+
+### binary operations
+
+- +months
+- +days
+
+### unary operations
+
+- dow
+- doy
