@@ -130,13 +130,13 @@ fn main() -> io::Result<()> {
             vec![Cell::Num(v[1].as_num() / v[0].as_num())]
         }),
         ("pow", vec!["Num", "Num"], &|v| {
-            vec![Cell::Num(f64::powf(v[0].as_num(), v[1].as_num()))]
+            vec![Cell::Num(f64::powf(v[1].as_num(), v[0].as_num()))]
         }),
         ("atan2", vec!["Num", "Num"], &|v| {
-            vec![Cell::Num(f64::atan2(v[0].as_num(), v[1].as_num()))]
+            vec![Cell::Num(f64::atan2(v[1].as_num(), v[0].as_num()))]
         }),
         ("hypot", vec!["Num", "Num"], &|v| {
-            vec![Cell::Num(f64::hypot(v[0].as_num(), v[1].as_num()))]
+            vec![Cell::Num(f64::hypot(v[1].as_num(), v[0].as_num()))]
         }),
         ("sin", vec!["Num"], &|v| {
             vec![Cell::Num(f64::sin(v[0].as_num()))]
