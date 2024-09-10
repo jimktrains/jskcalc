@@ -1,8 +1,11 @@
 #![feature(integer_sign_cast)]
+use rand::distributions::Uniform;
+use rand_distr::Normal;
 mod datetime;
 mod units;
 use crate::datetime::Date;
 use crate::units::{load_units, UnitExpr};
+use rand::prelude::*;
 use regex::Regex;
 use std::f64::consts::{E, FRAC_PI_2, FRAC_PI_4, LN_10, LN_2, PI, SQRT_2, TAU};
 use std::io;
@@ -102,6 +105,60 @@ fn find_op<'a>(
 
 fn main() -> io::Result<()> {
     let ops: Vec<(&str, Vec<&str>, &dyn Fn(Vec<Cell>) -> Vec<Cell>)> = vec![
+        ("round-even", vec!["Num"], &|v| {
+            let x = v[0].as_num();
+            vec![Cell::Num(x.round_ties_even())]
+        }),
+        ("round-evend", vec!["Num", "Num"], &|v| {
+            let x = v[1].as_num();
+            let prec = 0.1f64.powf(v[0].as_num());
+            vec![Cell::Num((x / prec).round_ties_even() * prec)]
+        }),
+        ("round-evenp", vec!["Num", "Num"], &|v| {
+            let x = v[1].as_num();
+            let prec = v[0].as_num();
+            vec![Cell::Num((x / prec).round_ties_even() * prec)]
+        }),
+        ("round", vec!["Num"], &|v| {
+            let x = v[0].as_num();
+            vec![Cell::Num(x.round())]
+        }),
+        ("roundd", vec!["Num", "Num"], &|v| {
+            let x = v[1].as_num();
+            let prec = 0.1f64.powf(v[0].as_num());
+            vec![Cell::Num((x / prec).round() * prec)]
+        }),
+        ("roundp", vec!["Num", "Num"], &|v| {
+            let x = v[1].as_num();
+            let prec = v[0].as_num();
+            vec![Cell::Num((x / prec).round() * prec)]
+        }),
+        ("urand01", vec![], &|_| {
+            let udist = Uniform::new(0.0, 1.0);
+            let mut rng = rand::thread_rng();
+            vec![Cell::Num(udist.sample(&mut rng))]
+        }),
+        ("urand", vec!["Num", "Num"], &|v| {
+            let udist = Uniform::new(v[1].as_num(), v[0].as_num());
+            let mut rng = rand::thread_rng();
+            vec![Cell::Num(udist.sample(&mut rng))]
+        }),
+        ("nrand", vec!["Num", "Num"], &|v| {
+            let μ = v[1].as_num();
+            let σ = v[1].as_num();
+            // Just let it panic
+            let ndist = Normal::new(μ, σ * σ).unwrap();
+            let mut rng = rand::thread_rng();
+            vec![Cell::Num(ndist.sample(&mut rng))]
+        }),
+        ("nrand01", vec![], &|_| {
+            let μ = 0.0;
+            let σ = 1.0;
+            // Just let it panic
+            let ndist = Normal::new(μ, σ * σ).unwrap();
+            let mut rng = rand::thread_rng();
+            vec![Cell::Num(ndist.sample(&mut rng))]
+        }),
         ("days", vec!["Num"], &|v| {
             vec![Cell::Days(v[0].as_num().floor() as i64)]
         }),
