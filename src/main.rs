@@ -1,6 +1,7 @@
-#![feature(integer_sign_cast)]
+use build_time::build_time_local;
 use rand::distributions::Uniform;
 use rand_distr::Normal;
+use std::fmt;
 mod datetime;
 mod units;
 use crate::datetime::Date;
@@ -9,6 +10,7 @@ use rand::prelude::*;
 use regex::Regex;
 use std::f64::consts::{E, FRAC_PI_2, FRAC_PI_4, LN_10, LN_2, PI, SQRT_2, TAU};
 use std::io;
+use std::io::Write;
 use std::ops::{BitAnd, BitOr, BitXor};
 use std::str::FromStr;
 
@@ -74,9 +76,18 @@ impl Cell {
 }
 
 type OpFcn<'a> = &'a dyn Fn(Vec<Cell>) -> Vec<Cell>;
-type OpType<'a> = (&'a str, Vec<&'a str>, OpFcn<'a>);
-type OpsType<'a> = Vec<(&'a str, Vec<&'a str>, &'a dyn Fn(Vec<Cell>) -> Vec<Cell>)>;
+type OpType<'a> = (&'a str, Vec<&'a str>, Vec<&'a str>, OpFcn<'a>);
+type OpsType<'a> = Vec<OpType<'a>>;
 type StackType = Vec<Cell>;
+
+/*
+// E: only traits defined in the current crate can be implemented for arbitrary types
+impl<'a> fmt::Display for OpType<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "")
+    }
+}
+*/
 
 fn find_op<'a>(
     opname: &'a str,
@@ -104,46 +115,46 @@ fn find_op<'a>(
 }
 
 fn main() -> io::Result<()> {
-    let ops: Vec<(&str, Vec<&str>, &dyn Fn(Vec<Cell>) -> Vec<Cell>)> = vec![
-        ("round-even", vec!["Num"], &|v| {
+    let ops: Vec<OpType> = vec![
+        ("round-even", vec!["Num"], vec!["Num"], &|v| {
             let x = v[0].as_num();
             vec![Cell::Num(x.round_ties_even())]
         }),
-        ("round-evend", vec!["Num", "Num"], &|v| {
+        ("round-evend", vec!["Num", "Num"], vec!["Num"], &|v| {
             let x = v[1].as_num();
             let prec = 0.1f64.powf(v[0].as_num());
             vec![Cell::Num((x / prec).round_ties_even() * prec)]
         }),
-        ("round-evenp", vec!["Num", "Num"], &|v| {
+        ("round-evenp", vec!["Num", "Num"], vec!["Num"], &|v| {
             let x = v[1].as_num();
             let prec = v[0].as_num();
             vec![Cell::Num((x / prec).round_ties_even() * prec)]
         }),
-        ("round", vec!["Num"], &|v| {
+        ("round", vec!["Num"], vec!["Num"], &|v| {
             let x = v[0].as_num();
             vec![Cell::Num(x.round())]
         }),
-        ("roundd", vec!["Num", "Num"], &|v| {
+        ("roundd", vec!["Num", "Num"], vec!["Num"], &|v| {
             let x = v[1].as_num();
             let prec = 0.1f64.powf(v[0].as_num());
             vec![Cell::Num((x / prec).round() * prec)]
         }),
-        ("roundp", vec!["Num", "Num"], &|v| {
+        ("roundp", vec!["Num", "Num"], vec!["Num"], &|v| {
             let x = v[1].as_num();
             let prec = v[0].as_num();
             vec![Cell::Num((x / prec).round() * prec)]
         }),
-        ("urand01", vec![], &|_| {
+        ("urand01", vec![], vec!["Num"], &|_| {
             let udist = Uniform::new(0.0, 1.0);
             let mut rng = rand::thread_rng();
             vec![Cell::Num(udist.sample(&mut rng))]
         }),
-        ("urand", vec!["Num", "Num"], &|v| {
+        ("urand", vec!["Num", "Num"], vec!["Num"], &|v| {
             let udist = Uniform::new(v[1].as_num(), v[0].as_num());
             let mut rng = rand::thread_rng();
             vec![Cell::Num(udist.sample(&mut rng))]
         }),
-        ("nrand", vec!["Num", "Num"], &|v| {
+        ("nrand", vec!["Num", "Num"], vec!["Num"], &|v| {
             let μ = v[1].as_num();
             let σ = v[1].as_num();
             // Just let it panic
@@ -151,7 +162,7 @@ fn main() -> io::Result<()> {
             let mut rng = rand::thread_rng();
             vec![Cell::Num(ndist.sample(&mut rng))]
         }),
-        ("nrand01", vec![], &|_| {
+        ("nrand01", vec![], vec!["Num"], &|_| {
             let μ = 0.0;
             let σ = 1.0;
             // Just let it panic
@@ -159,151 +170,153 @@ fn main() -> io::Result<()> {
             let mut rng = rand::thread_rng();
             vec![Cell::Num(ndist.sample(&mut rng))]
         }),
-        ("days", vec!["Num"], &|v| {
+        ("days", vec!["Num"], vec!["Days"], &|v| {
             vec![Cell::Days(v[0].as_num().floor() as i64)]
         }),
-        ("weeks", vec!["Num"], &|v| {
+        ("weeks", vec!["Num"], vec!["Days"], &|v| {
             vec![Cell::Days(7 * v[0].as_num().floor() as i64)]
         }),
-        ("+", vec!["Days", "Date"], &|v| {
+        ("+", vec!["Days", "Date"], vec!["Date"], &|v| {
             vec![Cell::Date(v[1].as_date().add_days(v[0].as_days() as u16))]
         }),
-        ("dow", vec!["Date"], &|a| {
+        ("dow", vec!["Date"], vec!["Str"], &|a| {
             vec![Cell::Str(format!("{:?}", a[0].as_date().dow()))]
         }),
-        ("doy", vec!["Date"], &|a| {
+        ("doy", vec!["Date"], vec!["Num"], &|a| {
             vec![Cell::Num(a[0].as_date().doy() as f64)]
         }),
-        ("+", vec!["Num", "Num"], &|v| {
+        ("+", vec!["Num", "Num"], vec!["Num"], &|v| {
             vec![Cell::Num(v[1].as_num() + v[0].as_num())]
         }),
-        ("-", vec!["Num", "Num"], &|v| {
+        ("-", vec!["Num", "Num"], vec!["Num"], &|v| {
             vec![Cell::Num(v[1].as_num() - v[0].as_num())]
         }),
-        ("*", vec!["Num", "Num"], &|v| {
+        ("*", vec!["Num", "Num"], vec!["Num"], &|v| {
             vec![Cell::Num(v[1].as_num() * v[0].as_num())]
         }),
-        ("/", vec!["Num", "Num"], &|v| {
+        ("/", vec!["Num", "Num"], vec!["Num"], &|v| {
             vec![Cell::Num(v[1].as_num() / v[0].as_num())]
         }),
-        ("pow", vec!["Num", "Num"], &|v| {
+        ("pow", vec!["Num", "Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::powf(v[1].as_num(), v[0].as_num()))]
         }),
-        ("atan2", vec!["Num", "Num"], &|v| {
+        ("atan2", vec!["Num", "Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::atan2(v[1].as_num(), v[0].as_num()))]
         }),
-        ("hypot", vec!["Num", "Num"], &|v| {
+        ("hypot", vec!["Num", "Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::hypot(v[1].as_num(), v[0].as_num()))]
         }),
-        ("sin", vec!["Num"], &|v| {
+        ("sin", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::sin(v[0].as_num()))]
         }),
-        ("cos", vec!["Num"], &|v| {
+        ("cos", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::cos(v[0].as_num()))]
         }),
-        ("tan", vec!["Num"], &|v| {
+        ("tan", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::tan(v[0].as_num()))]
         }),
-        ("asin", vec!["Num"], &|v| {
+        ("asin", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::asin(v[0].as_num()))]
         }),
-        ("acos", vec!["Num"], &|v| {
+        ("acos", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::acos(v[0].as_num()))]
         }),
-        ("atan", vec!["Num"], &|v| {
+        ("atan", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::atan(v[0].as_num()))]
         }),
-        ("sinh", vec!["Num"], &|v| {
+        ("sinh", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::sinh(v[0].as_num()))]
         }),
-        ("cosh", vec!["Num"], &|v| {
+        ("cosh", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::cosh(v[0].as_num()))]
         }),
-        ("tanh", vec!["Num"], &|v| {
+        ("tanh", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::tanh(v[0].as_num()))]
         }),
-        ("asinh", vec!["Num"], &|v| {
+        ("asinh", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::asinh(v[0].as_num()))]
         }),
-        ("acosh", vec!["Num"], &|v| {
+        ("acosh", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::acosh(v[0].as_num()))]
         }),
-        ("atanh", vec!["Num"], &|v| {
+        ("atanh", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::atanh(v[0].as_num()))]
         }),
         ////
-        ("d2r", vec!["Num"], &|v| {
+        ("d2r", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::to_radians(v[0].as_num()))]
         }),
-        ("r2d", vec!["Num"], &|v| {
+        ("r2d", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::to_degrees(v[0].as_num()))]
         }),
         ////
-        ("1/", vec!["Num"], &|v| {
+        ("1/", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::recip(v[0].as_num()))]
         }),
-        ("recip", vec!["Num"], &|v| {
+        ("recip", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::recip(v[0].as_num()))]
         }),
         ////
-        ("ln", vec!["Num"], &|v| {
+        ("ln", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::ln(v[0].as_num()))]
         }),
-        ("ln1+", vec!["Num"], &|v| {
+        ("ln1+", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::ln_1p(v[0].as_num()))]
         }),
-        ("log10", vec!["Num"], &|v| {
+        ("log10", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::log10(v[0].as_num()))]
         }),
-        ("log2", vec!["Num"], &|v| {
+        ("log2", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::log2(v[0].as_num()))]
         }),
-        ("exp", vec!["Num"], &|v| {
+        ("exp", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::exp(v[0].as_num()))]
         }),
-        ("exp-1", vec!["Num"], &|v| {
+        ("exp-1", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::exp_m1(v[0].as_num()))]
         }),
-        ("sqrt", vec!["Num"], &|v| {
+        ("sqrt", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::sqrt(v[0].as_num()))]
         }),
-        ("cbrt", vec!["Num"], &|v| {
+        ("cbrt", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::cbrt(v[0].as_num()))]
         }),
-        ("sq", vec!["Num"], &|a| {
+        ("sq", vec!["Num"], vec!["Num"], &|a| {
             vec![Cell::Num(a[0].as_num() * a[0].as_num())]
         }),
-        ("cb", vec!["Num"], &|a| {
+        ("cb", vec!["Num"], vec!["Num"], &|a| {
             vec![Cell::Num(a[0].as_num() * a[0].as_num() * a[0].as_num())]
         }),
         ////
-        ("abs", vec!["Num"], &|v| {
+        ("abs", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::abs(v[0].as_num()))]
         }),
-        ("ceil", vec!["Num"], &|v| {
+        ("ceil", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::ceil(v[0].as_num()))]
         }),
-        ("floor", vec!["Num"], &|v| {
+        ("floor", vec!["Num"], vec!["Num"], &|v| {
             vec![Cell::Num(f64::floor(v[0].as_num()))]
         }),
-        ("pi", vec![], &|_| vec![Cell::Num(PI)]),
-        ("e", vec![], &|_| vec![Cell::Num(E)]),
-        ("sqrt2", vec![], &|_| vec![Cell::Num(SQRT_2)]),
-        ("ln2", vec![], &|_| vec![Cell::Num(LN_2)]),
-        ("ln10", vec![], &|_| vec![Cell::Num(LN_10)]),
-        ("tau", vec![], &|_| vec![Cell::Num(TAU)]),
-        ("pi/2", vec![], &|_| vec![Cell::Num(FRAC_PI_2)]),
-        ("pi/4", vec![], &|_| vec![Cell::Num(FRAC_PI_4)]),
-        ("drop", vec!["*"], &|_v| vec![]),
-        ("swap", vec!["*", "*"], &|v| {
+        ("pi", vec![], vec!["Num"], &|_| vec![Cell::Num(PI)]),
+        ("e", vec![], vec!["Num"], &|_| vec![Cell::Num(E)]),
+        ("sqrt2", vec![], vec!["Num"], &|_| vec![Cell::Num(SQRT_2)]),
+        ("ln2", vec![], vec!["Num"], &|_| vec![Cell::Num(LN_2)]),
+        ("ln10", vec![], vec!["Num"], &|_| vec![Cell::Num(LN_10)]),
+        ("tau", vec![], vec!["Num"], &|_| vec![Cell::Num(TAU)]),
+        ("pi/2", vec![], vec!["Num"], &|_| vec![Cell::Num(FRAC_PI_2)]),
+        ("pi/4", vec![], vec!["Num"], &|_| vec![Cell::Num(FRAC_PI_4)]),
+        ("drop", vec!["*"], vec![], &|_v| vec![]),
+        ("swap", vec!["*", "*"], vec!["b", "a"], &|v| {
             vec![v[0].clone(), v[1].clone()]
         }),
-        ("rot", vec!["*", "*", "*"], &|v| {
+        ("rot", vec!["*", "*", "*"], vec!["c", "a", "b"], &|v| {
             vec![v[0].clone(), v[2].clone(), v[1].clone()]
         }),
-        ("dup", vec!["*"], &|v| vec![v[0].clone(), v[0].clone()]),
+        ("dup", vec!["*"], vec!["a", "a"], &|v| {
+            vec![v[0].clone(), v[0].clone()]
+        }),
         ////
-        ("w", vec!["Num"], &|v| {
+        ("w", vec!["Num"], vec!["Word"], &|v| {
             if let Cell::Num(n) = v[0] {
                 vec![Cell::Word(n as i64)]
             } else {
@@ -313,7 +326,7 @@ fn main() -> io::Result<()> {
             }
         }),
         ////
-        ("dms2dd", vec!["Num", "Num", "Num"], &|v| {
+        ("dms2dd", vec!["Num", "Num", "Num"], vec!["Num"], &|v| {
             if let Cell::Num(d) = v[2] {
                 if let Cell::Num(m) = v[1] {
                     if let Cell::Num(s) = v[0] {
@@ -334,7 +347,7 @@ fn main() -> io::Result<()> {
                 vec![]
             }
         }),
-        ("dd2dms", vec!["Num"], &|v| {
+        ("dd2dms", vec!["Num"], vec!["Num", "Num", "Num"], &|v| {
             if let Cell::Num(mut v) = v[0] {
                 let d = v.floor();
                 v = (v - d) * 60.0;
@@ -348,63 +361,83 @@ fn main() -> io::Result<()> {
                 vec![]
             }
         }),
-        ("+", vec!["Num", "Num"], &|v| {
+        ("+", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(i64::wrapping_add(
                 v[1].as_word(),
                 v[0].as_word(),
             ))]
         }),
-        ("-", vec!["Word", "Word"], &|v| {
+        ("-", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(v[1].as_word().wrapping_sub(v[0].as_word()))]
         }),
-        ("*", vec!["Word", "Word"], &|v| {
+        ("*", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(i64::wrapping_mul(
                 v[1].as_word(),
                 v[0].as_word(),
             ))]
         }),
-        ("/", vec!["Word", "Word"], &|v| {
+        ("/", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(v[1].as_word() / v[0].as_word())]
         }),
-        ("mod", vec!["Word", "Word"], &|v| {
+        ("mod", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(v[1].as_word() % v[0].as_word())]
         }),
-        ("&", vec!["Word", "Word"], &|v| {
+        ("&", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(i64::bitand(v[1].as_word(), v[0].as_word()))]
         }),
-        ("^", vec!["Word", "Word"], &|v| {
+        ("xor", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(i64::bitxor(v[1].as_word(), v[0].as_word()))]
         }),
-        ("|", vec!["Word", "Word"], &|v| {
+        ("|", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(i64::bitor(v[1].as_word(), v[0].as_word()))]
         }),
-        ("sl", vec!["Word", "Word"], &|v| {
+        ("sl", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(v[1].as_word() << v[0].as_word())]
         }),
-        ("asr", vec!["Word", "Word"], &|v| {
+        ("asr", vec!["Word", "Word"], vec!["Word"], &|v| {
             vec![Cell::Word(v[1].as_word() >> v[0].as_word())]
         }),
-        ("lsr", vec!["Num", "Num"], &|v| {
+        ("lsr", vec!["Num", "Num"], vec!["Word"], &|v| {
             vec![Cell::Word(i64::from_be_bytes(
                 ((u64::from_be_bytes(v[1].as_word().to_be_bytes())) >> v[0].as_word())
                     .to_be_bytes(),
             ))]
         }),
-        ("~", vec!["Word"], &|v| vec![Cell::Word(!v[0].as_word())]),
+        ("~", vec!["Word"], vec!["Word"], &|v| {
+            vec![Cell::Word(!v[0].as_word())]
+        }),
     ];
 
     let mut stack = vec![];
     let stdin = io::stdin();
     let date_pattern = Regex::new(r"\d{4}-\d{2}-\d{2}").unwrap();
     let units = load_units();
+    println!(
+        "jskcalc     build: {}",
+        build_time_local!("%Y-%m-%d %H:%M:%S")
+    );
     loop {
         let mut buffer = String::new();
+        print!("> ");
+        _ = io::stdout().flush();
         stdin.read_line(&mut buffer)?;
+        if buffer.len() == 0 {
+            return Ok(());
+        }
         let split = buffer.split(" ");
         for s in split {
             let s = s.trim();
             if s.len() == 0 {
                 continue;
+            }
+            if s == "help" {
+                ops.iter().for_each(|(oname, sb, sa, _fcn)| {
+                    print!("{oname:20} (");
+                    sb.iter().for_each(|x| print!("{x} "));
+                    print!(" -- ");
+                    sa.iter().for_each(|x| print!("{x} "));
+                    println!(")");
+                });
             }
             if let Ok(f) = f64::from_str(s) {
                 stack.push(Cell::Num(f));
@@ -429,7 +462,7 @@ fn main() -> io::Result<()> {
                 for _ in 1..=plen {
                     params.push(stack.pop().unwrap());
                 }
-                stack.append(&mut op.2(params));
+                stack.append(&mut op.3(params));
             } else if s == "conv" {
                 let a = stack.pop();
                 let b = stack.pop();
@@ -490,7 +523,7 @@ fn main() -> io::Result<()> {
                         Cell::Str(v) => println!("S {v:?}"),
                     };
                 }
-            } else if s == "p" || s == "pd" {
+            } else if s == "p" || s == "pd" || s == "." {
                 let v = if s == "pd" {
                     stack.pop()
                 } else {
@@ -523,8 +556,27 @@ fn main() -> io::Result<()> {
                     println!(" {i}: {e:?}");
                 }
                 println!();
-            } else if s == "q" {
+            } else if s == "q" || s == "exit" || s == "quit" {
                 return Ok(());
+            } else if s == "help" || s == "?" {
+                println!("Types:");
+                println!("  single quote quoted text       String");
+                println!("  string not matching function   String");
+                println!("  {date_pattern}                 pattern for dates");
+                println!("  [-][0-9]+(.[0-9]+)?            pattern for number");
+                println!("  0x[0-9A-Fa-f]+                 pattern for words");
+                println!("Builtins:");
+                println!("  conv            unit conversions");
+                println!("  pl              print last (not sure)");
+                println!("  p               pop and print");
+                println!("  pd .            print top of stack");
+                println!("  clr             clear the stack");
+                println!("  ps              print the stack");
+                println!("  q exit quit     exit");
+                println!("Functions:");
+                for op in &ops {
+                    println!("  {} {:?} -- {:?}", op.0, op.1, op.2);
+                }
             } else {
                 stack.push(Cell::Str(s.to_owned()));
             }
